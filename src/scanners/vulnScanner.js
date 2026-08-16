@@ -59,6 +59,7 @@ async function scanProjectSources() {
                 "fs",
                 "--scanners", "vuln,secret",
                 "--severity", "CRITICAL,HIGH,MEDIUM",
+                "--ignore-unfixed",
                 "--format", "json",
                 "--quiet",
                 project.path,
@@ -107,6 +108,7 @@ async function scanRunningImages() {
             const report = await runTrivyJson([
                 "image",
                 "--severity", "CRITICAL,HIGH",
+                "--ignore-unfixed",
                 "--format", "json",
                 "--quiet",
                 image,

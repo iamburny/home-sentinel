@@ -1,8 +1,12 @@
 const { DatabaseSync } = require("node:sqlite");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 
-const DATA_DIR = process.env.STATE_DIR || "/data";
+// STATE_DIR is always set explicitly in production (see docker-compose.yml).
+// When it isn't - local/test runs - default to a directory unique to this
+// process, so concurrent test-runner processes never race on the same file.
+const DATA_DIR = process.env.STATE_DIR || path.join(os.tmpdir(), `sentinel-${process.pid}`);
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -52,6 +56,9 @@ function setKv(key, value) {
  */
 function recordFindings(target, findings) {
     const now = new Date().toISOString();
+    const isFirstScan =
+        db.prepare("SELECT 1 FROM vuln_findings WHERE target = ? LIMIT 1").get(target) === undefined;
+
     const getExisting = db.prepare(
         "SELECT vuln_id FROM vuln_findings WHERE target = ? AND vuln_id = ?"
     );
@@ -61,12 +68,15 @@ function recordFindings(target, findings) {
         ON CONFLICT(target, vuln_id) DO UPDATE SET last_seen = excluded.last_seen
     `);
 
+    // A target's very first scan establishes a silent baseline rather than
+    // alerting on everything at once - only genuinely new findings from the
+    // second scan onward should page anyone.
     const newFindings = [];
     db.exec("BEGIN");
     try {
         for (const f of findings) {
             const existing = getExisting.get(target, f.id);
-            if (!existing) newFindings.push(f);
+            if (!existing && !isFirstScan) newFindings.push(f);
             upsert.run({
                 target,
                 vuln_id: f.id,
