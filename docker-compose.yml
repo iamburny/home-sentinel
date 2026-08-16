@@ -1,0 +1,61 @@
+networks:
+    home:
+      name: home
+      external: true
+
+volumes:
+    sentinel-data:
+
+services:
+    docker-socket-proxy:
+        image: tecnativa/docker-socket-proxy:latest
+        container_name: sentinel-docker-proxy
+        restart: unless-stopped
+        environment:
+            # Read-only access, minimum needed for container/image enumeration
+            # and stats. Everything else (exec, create, delete, build, ...)
+            # stays at its default of disabled.
+            - CONTAINERS=1
+            - IMAGES=1
+            - INFO=1
+            - PING=1
+            - POST=0
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+        networks:
+            - home
+
+    sentinel:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: sentinel
+        restart: unless-stopped
+        # Shares the host PID namespace so process-path anomaly detection sees
+        # every container's processes directly, the same way we investigated
+        # the incident manually via SSH.
+        pid: "host"
+        depends_on:
+            - docker-socket-proxy
+        env_file: .env
+        environment:
+            - DOCKER_HOST=tcp://docker-socket-proxy:2375
+            - STATE_DIR=/data
+            - AUTH_LOG_PATH=/var/log/auth.log
+        volumes:
+            - sentinel-data:/data
+            - /var/log/auth.log:/var/log/auth.log:ro
+            - /home/matt/api.collecterly.com:/projects/api.collecterly.com:ro
+            - /home/matt/www.collecterly.com:/projects/www.collecterly.com:ro
+            - /home/matt/fuel-web:/projects/fuel-web:ro
+            - /home/matt/fuel-admin:/projects/fuel-admin:ro
+            - /home/matt/fuel-api:/projects/fuel-api:ro
+            - /home/matt/unleash:/projects/unleash:ro
+            - /home/matt/simple-proxy:/projects/simple-proxy:ro
+            - /home/matt/www.burny.uk:/projects/www.burny.uk:ro
+            - /home/matt/joplin-server:/projects/joplin-server:ro
+        networks:
+            - home
+        # Deliberately no `ports:` and no traefik labels - this service is
+        # never reachable inbound, only makes outbound calls (socket-proxy,
+        # trivy's vuln DB, Slack).
