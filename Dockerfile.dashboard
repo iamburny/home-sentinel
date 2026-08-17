@@ -10,5 +10,10 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
 
+# See Dockerfile's identical step for why - the base image's bundled npm CLI
+# pulls in its own tar/brace-expansion/etc. deps, flagged by Trivy even
+# though nothing here ever invokes npm at runtime.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 ENV NODE_ENV=production
 CMD ["node", "src/dashboard/server.js"]
