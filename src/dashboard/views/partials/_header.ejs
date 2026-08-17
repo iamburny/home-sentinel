@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>home-sentinel</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --panel: #161923;
+            --border: #262b3a;
+            --text: #e2e4ea;
+            --muted: #8890a4;
+            --link: #6ea8fe;
+            --critical: #f04747;
+            --high: #ff9f43;
+            --medium: #f5d547;
+            --low: #8890a4;
+            --info: #6ea8fe;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            padding: 14px 24px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+        }
+        header .brand { font-weight: 600; font-size: 15px; }
+        header nav { display: flex; gap: 18px; }
+        header nav a {
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 13px;
+            padding: 4px 0;
+            border-bottom: 2px solid transparent;
+        }
+        header nav a.active, header nav a:hover { color: var(--text); border-bottom-color: var(--link); }
+        main { max-width: 1000px; margin: 0 auto; padding: 24px; }
+        h1 { font-size: 18px; margin: 0 0 16px; }
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+        }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+        .stat { text-align: center; padding: 12px; }
+        .stat .n { font-size: 28px; font-weight: 700; }
+        .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .sev-CRITICAL { color: var(--critical); }
+        .sev-HIGH { color: var(--high); }
+        .sev-MEDIUM { color: var(--medium); }
+        .sev-LOW, .sev-INFO { color: var(--low); }
+        .badge {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid currentColor;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+        th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+        tr:last-child td { border-bottom: none; }
+        .muted { color: var(--muted); }
+        .detail { white-space: pre-wrap; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+        .empty { color: var(--muted); padding: 24px; text-align: center; }
+        .filters { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
+        .filters select, .filters a.toggle {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 13px;
+            text-decoration: none;
+        }
+        .filters a.toggle.active { border-color: var(--link); color: var(--link); }
+        a { color: var(--link); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">🛡️ home-sentinel</div>
+        <nav>
+            <a href="/" class="<%= activePage === 'overview' ? 'active' : '' %>">Overview</a>
+            <a href="/findings" class="<%= activePage === 'findings' ? 'active' : '' %>">Findings</a>
+            <a href="/events" class="<%= activePage === 'events' ? 'active' : '' %>">Events</a>
+        </nav>
+    </header>
+    <main>

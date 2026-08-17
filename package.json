@@ -9,10 +9,13 @@
   },
   "scripts": {
     "start": "node src/index.js",
+    "dashboard": "node src/dashboard/server.js",
     "test": "node --test src/scanners/*.test.js"
   },
   "dependencies": {
     "dockerode": "^4.0.3",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
     "node-cron": "^3.0.3"
   }
 }

@@ -59,3 +59,28 @@ services:
         # Deliberately no `ports:` and no traefik labels - this service is
         # never reachable inbound, only makes outbound calls (socket-proxy,
         # trivy's vuln DB, Slack).
+
+    dashboard:
+        build:
+            context: .
+            dockerfile: Dockerfile.dashboard
+        container_name: sentinel-dashboard
+        restart: unless-stopped
+        depends_on:
+            - sentinel
+        env_file: .env
+        environment:
+            - STATE_DIR=/data
+        volumes:
+            - sentinel-data:/data
+        ports:
+            - "3099:3099"
+        networks:
+            - home
+        # No traefik labels - deliberately not routed through the public
+        # reverse proxy. Reachable only via <server-lan-ip>:3099; since just
+        # 80/443/22 are forwarded through the router, this port is already
+        # unreachable from the internet by default. Only mounts the shared
+        # state volume - no pid: host, no docker-socket-proxy access, no
+        # auth.log, no project source - if the web UI is ever compromised it
+        # can only read scan history, nothing else on the host.

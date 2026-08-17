@@ -1,0 +1,33 @@
+<%- include('partials/_header') %>
+
+<h1>Compromise indicator events</h1>
+
+<div class="panel">
+    <% if (events.length === 0) { %>
+        <div class="empty">No anomaly events recorded yet - good sign.</div>
+    <% } else { %>
+        <table>
+            <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Event</th>
+                    <th>Occurred</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% for (const e of events) { %>
+                    <tr>
+                        <td><span class="badge sev-<%= e.severity %>"><%= e.severity %></span></td>
+                        <td>
+                            <div><%= e.title %></div>
+                            <% if (e.detail) { %><div class="detail"><%= e.detail %></div><% } %>
+                        </td>
+                        <td class="muted"><%= timeAgo(e.occurred_at) %></td>
+                    </tr>
+                <% } %>
+            </tbody>
+        </table>
+    <% } %>
+</div>
+
+<%- include('partials/_footer') %>

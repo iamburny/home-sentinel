@@ -190,7 +190,9 @@ async function run() {
         checkSshLogins(),
     ]);
     state.pruneOldCpuSamples();
-    return [...cpuAlerts, ...pathAlerts, ...portAlerts, ...sshAlerts];
+    const findings = [...cpuAlerts, ...pathAlerts, ...portAlerts, ...sshAlerts];
+    for (const f of findings) state.recordAnomalyEvent(f);
+    return findings;
 }
 
 module.exports = { run, ipInCidr, cpuPercentFromStats };

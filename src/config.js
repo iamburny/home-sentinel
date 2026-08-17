@@ -66,6 +66,7 @@ module.exports = {
             8200, 8201, 8202, 8203, // fuel-api, fuel-web, fuel-admin, unleash
             8030, // simple-proxy
             25566, 5520, // minecraft, hytale
+            3099, // home-sentinel's own dashboard
         ],
     },
 };

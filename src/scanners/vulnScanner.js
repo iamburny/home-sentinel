@@ -22,9 +22,7 @@ function extractFindings(trivyReport) {
                 id: vuln.VulnerabilityID,
                 severity: vuln.Severity,
                 title: vuln.Title || vuln.VulnerabilityID,
-                pkg: vuln.PkgName,
-                installed: vuln.InstalledVersion,
-                fixed: vuln.FixedVersion,
+                detail: `${vuln.Title || vuln.VulnerabilityID}\n${vuln.PkgName} ${vuln.InstalledVersion} → fix: ${vuln.FixedVersion || "none available"}`,
             });
         }
         for (const secret of result.Secrets || []) {
@@ -32,8 +30,7 @@ function extractFindings(trivyReport) {
                 id: `secret:${result.Target}:${secret.RuleID}:${secret.StartLine}`,
                 severity: secret.Severity,
                 title: `Leaked secret: ${secret.Title}`,
-                file: result.Target,
-                line: secret.StartLine,
+                detail: `${secret.Title} (${result.Target}:${secret.StartLine})`,
             });
         }
     }
@@ -44,9 +41,7 @@ function toAlert(scopeLabel, finding) {
     return {
         severity: finding.severity,
         title: `[${scopeLabel}] ${finding.id}`,
-        detail: finding.pkg
-            ? `${finding.title}\n${finding.pkg} ${finding.installed} → fix: ${finding.fixed || "none available"}`
-            : `${finding.title}${finding.file ? ` (${finding.file}:${finding.line})` : ""}`,
+        detail: finding.detail,
     };
 }
 
@@ -91,14 +86,24 @@ async function scanRunningImages() {
             const inspect = await docker.getImage(image).inspect();
             const createdAt = new Date(inspect.Created);
             const ageDays = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+            const staleTarget = `stale:${containerName}`;
+            // Routed through recordFindings/pruneStaleFindings like everything
+            // else, rather than a raw one-off push - otherwise this would
+            // re-alert every single day forever instead of once, and would
+            // never show up in the dashboard's findings list.
             if (ageDays > config.staleImageDays) {
-                alerts.push({
+                const staleFinding = {
+                    id: "stale-image",
                     severity: "MEDIUM",
-                    title: `[${containerName}] stale image`,
+                    title: "stale image",
                     detail: `Image "${image}" was built ${Math.round(ageDays)} days ago (${createdAt
                         .toISOString()
                         .slice(0, 10)}) - likely carrying unpatched CVEs. Consider rebuilding.`,
-                });
+                };
+                const newFindings = state.recordFindings(staleTarget, [staleFinding]);
+                alerts.push(...newFindings.map((f) => toAlert(containerName, f)));
+            } else {
+                state.pruneStaleFindings(staleTarget, []);
             }
         } catch (err) {
             console.error(`[vulnScanner] image inspect failed for ${image}:`, err.message);

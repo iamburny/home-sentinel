@@ -1,0 +1,71 @@
+<%- include('partials/_header') %>
+
+<h1>Overview</h1>
+
+<div class="panel">
+    <div class="grid">
+        <div class="stat">
+            <div class="n"><%= totalActive %></div>
+            <div class="label">Open findings</div>
+        </div>
+        <% for (const sev of ['CRITICAL', 'HIGH', 'MEDIUM']) { %>
+            <div class="stat">
+                <div class="n sev-<%= sev %>"><%= severityCounts[sev] || 0 %></div>
+                <div class="label"><%= sev %></div>
+            </div>
+        <% } %>
+    </div>
+</div>
+
+<div class="panel">
+    <table>
+        <tr>
+            <td>Last vulnerability scan</td>
+            <td>
+                <% if (lastVulnRun) { %>
+                    <%= timeAgo(lastVulnRun.started_at) %>
+                    <span class="muted">
+                        (<%= lastVulnRun.error ? 'failed: ' + lastVulnRun.error : (lastVulnRun.findings_count ?? '?') + ' new finding(s)' %>)
+                    </span>
+                <% } else { %>
+                    <span class="muted">no scan recorded yet</span>
+                <% } %>
+            </td>
+        </tr>
+        <tr>
+            <td>Last anomaly scan</td>
+            <td>
+                <% if (lastAnomalyRun) { %>
+                    <%= timeAgo(lastAnomalyRun.started_at) %>
+                    <span class="muted">
+                        (<%= lastAnomalyRun.error ? 'failed: ' + lastAnomalyRun.error : (lastAnomalyRun.findings_count ?? '?') + ' finding(s)' %>)
+                    </span>
+                <% } else { %>
+                    <span class="muted">no scan recorded yet</span>
+                <% } %>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="panel">
+    <h2 style="font-size:14px;margin-top:0;">Container CPU (latest sample)</h2>
+    <% if (latestCpu.length === 0) { %>
+        <div class="empty">No CPU samples recorded yet.</div>
+    <% } else { %>
+        <table>
+            <thead><tr><th>Container</th><th>CPU%</th><th>Sampled</th></tr></thead>
+            <tbody>
+                <% for (const c of latestCpu) { %>
+                    <tr>
+                        <td><%= c.container %></td>
+                        <td><%= Math.round(c.cpu_percent) %>%</td>
+                        <td class="muted"><%= timeAgo(c.sampled_at) %></td>
+                    </tr>
+                <% } %>
+            </tbody>
+        </table>
+    <% } %>
+</div>
+
+<%- include('partials/_footer') %>

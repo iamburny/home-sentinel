@@ -1,0 +1,56 @@
+<%- include('partials/_header') %>
+
+<h1>Findings</h1>
+
+<div class="filters">
+    <a class="toggle <%= !showResolved ? 'active' : '' %>" href="/findings?<%= severityFilter ? 'severity=' + severityFilter + '&' : '' %><%= targetFilter ? 'target=' + encodeURIComponent(targetFilter) : '' %>">Active</a>
+    <a class="toggle <%= showResolved ? 'active' : '' %>" href="/findings?resolved=1<%= severityFilter ? '&severity=' + severityFilter : '' %><%= targetFilter ? '&target=' + encodeURIComponent(targetFilter) : '' %>">Resolved</a>
+
+    <form method="get" style="display:flex;gap:10px;">
+        <% if (showResolved) { %><input type="hidden" name="resolved" value="1"><% } %>
+        <select name="severity" onchange="this.form.submit()">
+            <option value="">All severities</option>
+            <% for (const sev of severityOrder) { %>
+                <option value="<%= sev %>" <%= severityFilter === sev ? 'selected' : '' %>><%= sev %></option>
+            <% } %>
+        </select>
+        <select name="target" onchange="this.form.submit()">
+            <option value="">All targets</option>
+            <% for (const t of allTargets) { %>
+                <option value="<%= t %>" <%= targetFilter === t ? 'selected' : '' %>><%= t %></option>
+            <% } %>
+        </select>
+    </form>
+</div>
+
+<div class="panel">
+    <% if (findings.length === 0) { %>
+        <div class="empty">No <%= showResolved ? 'resolved' : 'active' %> findings<%= severityFilter || targetFilter ? ' matching this filter' : '' %>.</div>
+    <% } else { %>
+        <table>
+            <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Target</th>
+                    <th>Finding</th>
+                    <th><%= showResolved ? 'Resolved' : 'First seen' %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% for (const f of findings) { %>
+                    <tr>
+                        <td><span class="badge sev-<%= f.severity %>"><%= f.severity %></span></td>
+                        <td><%= f.target %></td>
+                        <td>
+                            <div><%= f.title || f.vuln_id %></div>
+                            <% if (f.detail) { %><div class="detail"><%= f.detail %></div><% } %>
+                        </td>
+                        <td class="muted"><%= timeAgo(showResolved ? f.resolved_at : f.first_seen) %></td>
+                    </tr>
+                <% } %>
+            </tbody>
+        </table>
+    <% } %>
+</div>
+
+<%- include('partials/_footer') %>
