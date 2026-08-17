@@ -158,6 +158,32 @@ function pruneStaleFindings(target, currentVulnIds) {
     }
 }
 
+/**
+ * Resolves every unresolved finding for any target NOT in the given list.
+ * pruneStaleFindings only handles a target's findings going away one at a
+ * time - if the target itself disappears entirely (a container retagged or
+ * renamed, so its old image string is never scanned again), its findings
+ * would otherwise orphan and stay "active" forever. Call once per full vuln
+ * scan cycle with every target actually scanned this run.
+ */
+function resolveOrphanedTargets(currentTargets) {
+    const currentSet = new Set(currentTargets);
+    const distinctTargets = db
+        .prepare("SELECT DISTINCT target FROM vuln_findings WHERE resolved_at IS NULL")
+        .all();
+    const now = new Date().toISOString();
+    const resolveAll = db.prepare(
+        "UPDATE vuln_findings SET resolved_at = ? WHERE target = ? AND resolved_at IS NULL"
+    );
+    let resolvedCount = 0;
+    for (const row of distinctTargets) {
+        if (!currentSet.has(row.target)) {
+            resolvedCount += resolveAll.run(now, row.target).changes;
+        }
+    }
+    return resolvedCount;
+}
+
 function recordCpuSample(container, cpuPercent) {
     db.prepare("INSERT INTO cpu_samples (container, cpu_percent, sampled_at) VALUES (?, ?, ?)").run(
         container,
@@ -256,6 +282,7 @@ function getLatestCpuByContainer() {
 module.exports = {
     recordFindings,
     pruneStaleFindings,
+    resolveOrphanedTargets,
     recordCpuSample,
     recentCpuSamples,
     pruneOldCpuSamples,

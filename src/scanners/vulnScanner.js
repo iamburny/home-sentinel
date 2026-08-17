@@ -48,7 +48,9 @@ function toAlert(scopeLabel, finding) {
 /** Filesystem-scans every project with source on disk for vulnerable deps and leaked secrets. */
 async function scanProjectSources() {
     const alerts = [];
+    const targets = [];
     for (const project of config.fsScanProjects) {
+        targets.push(project.name);
         try {
             const report = await runTrivyJson([
                 "fs",
@@ -67,12 +69,13 @@ async function scanProjectSources() {
             console.error(`[vulnScanner] fs scan failed for ${project.name}:`, err.message);
         }
     }
-    return alerts;
+    return { alerts, targets };
 }
 
 /** Scans every running container's actual image - covers vendor images with no source on disk too. */
 async function scanRunningImages() {
     const alerts = [];
+    const targets = [];
     const containers = await docker.listContainers();
     const seenImages = new Set();
 
@@ -82,11 +85,14 @@ async function scanRunningImages() {
         if (seenImages.has(image)) continue;
         seenImages.add(image);
 
+        const staleTarget = `stale:${containerName}`;
+        const imageTarget = `image:${image}`;
+        targets.push(staleTarget, imageTarget);
+
         try {
             const inspect = await docker.getImage(image).inspect();
             const createdAt = new Date(inspect.Created);
             const ageDays = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
-            const staleTarget = `stale:${containerName}`;
             // Routed through recordFindings/pruneStaleFindings like everything
             // else, rather than a raw one-off push - otherwise this would
             // re-alert every single day forever instead of once, and would
@@ -119,20 +125,24 @@ async function scanRunningImages() {
                 image,
             ]);
             const findings = extractFindings(report);
-            const target = `image:${image}`;
-            const newFindings = state.recordFindings(target, findings);
-            state.pruneStaleFindings(target, findings.map((f) => f.id));
+            const newFindings = state.recordFindings(imageTarget, findings);
+            state.pruneStaleFindings(imageTarget, findings.map((f) => f.id));
             alerts.push(...newFindings.map((f) => toAlert(containerName, f)));
         } catch (err) {
             console.error(`[vulnScanner] image scan failed for ${image}:`, err.message);
         }
     }
-    return alerts;
+    return { alerts, targets };
 }
 
 async function run() {
-    const [sourceAlerts, imageAlerts] = await Promise.all([scanProjectSources(), scanRunningImages()]);
-    return [...sourceAlerts, ...imageAlerts];
+    const [sources, images] = await Promise.all([scanProjectSources(), scanRunningImages()]);
+    // Resolves findings for any target that vanished entirely this cycle
+    // (a container retagged or renamed, not just an individual finding
+    // within a target going away) - see resolveOrphanedTargets's own doc
+    // comment for why pruneStaleFindings alone can't catch this case.
+    state.resolveOrphanedTargets([...sources.targets, ...images.targets]);
+    return [...sources.alerts, ...images.alerts];
 }
 
 module.exports = { run, extractFindings, toAlert };
