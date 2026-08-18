@@ -37,8 +37,18 @@ function extractFindings(trivyReport) {
     return findings;
 }
 
-function toAlert(scopeLabel, finding) {
+/**
+ * `target` is the real key findings are stored/looked-up under in state.js
+ * (e.g. "api.collecterly.com", or "image:sha256:..." for a vendor image) -
+ * `scopeLabel` is the human-readable name shown in the alert text, which for
+ * image/stale findings is the container name rather than that raw key. Both
+ * are threaded through so alert.js can build a dashboard deep link using the
+ * real target while still showing a friendly label.
+ */
+function toAlert(target, scopeLabel, finding) {
     return {
+        target,
+        vulnId: finding.id,
         severity: finding.severity,
         title: `[${scopeLabel}] ${finding.id}`,
         detail: finding.detail,
@@ -64,7 +74,7 @@ async function scanProjectSources() {
             const findings = extractFindings(report);
             const newFindings = state.recordFindings(project.name, findings);
             state.pruneStaleFindings(project.name, findings.map((f) => f.id));
-            alerts.push(...newFindings.map((f) => toAlert(project.name, f)));
+            alerts.push(...newFindings.map((f) => toAlert(project.name, project.name, f)));
         } catch (err) {
             console.error(`[vulnScanner] fs scan failed for ${project.name}:`, err.message);
         }
@@ -107,7 +117,7 @@ async function scanRunningImages() {
                         .slice(0, 10)}) - likely carrying unpatched CVEs. Consider rebuilding.`,
                 };
                 const newFindings = state.recordFindings(staleTarget, [staleFinding]);
-                alerts.push(...newFindings.map((f) => toAlert(containerName, f)));
+                alerts.push(...newFindings.map((f) => toAlert(staleTarget, containerName, f)));
             } else {
                 state.pruneStaleFindings(staleTarget, []);
             }
@@ -127,7 +137,7 @@ async function scanRunningImages() {
             const findings = extractFindings(report);
             const newFindings = state.recordFindings(imageTarget, findings);
             state.pruneStaleFindings(imageTarget, findings.map((f) => f.id));
-            alerts.push(...newFindings.map((f) => toAlert(containerName, f)));
+            alerts.push(...newFindings.map((f) => toAlert(imageTarget, containerName, f)));
         } catch (err) {
             console.error(`[vulnScanner] image scan failed for ${image}:`, err.message);
         }

@@ -3,6 +3,7 @@ const express = require("express");
 const { basicAuth } = require("./auth");
 const { timeAgo } = require("./format");
 const state = require("../state");
+const config = require("../config");
 
 const PORT = Number(process.env.DASHBOARD_PORT || 3099);
 const DASHBOARD_USER = process.env.DASHBOARD_USER || "admin";
@@ -15,8 +16,15 @@ const app = express();
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
+app.use(express.urlencoded({ extended: false }));
 app.use(basicAuth(DASHBOARD_USER, DASHBOARD_PASSWORD));
 app.locals.timeAgo = timeAgo;
+
+/** Whether a target has a "Fix with Claude" routine configured (id + token both set). */
+function fixEnabledFor(target) {
+    const project = config.fsScanProjects.find((p) => p.name === target);
+    return Boolean(project?.fixRoutineId && project?.fixRoutineToken);
+}
 
 function severityCounts(findings) {
     const counts = Object.fromEntries(SEVERITY_ORDER.map((s) => [s, 0]));
@@ -78,7 +86,46 @@ app.get("/findings", (req, res) => {
         targetFilter,
         allTargets,
         severityOrder: SEVERITY_ORDER,
+        fixEnabledFor,
     });
+});
+
+// Single-finding review page - the safe, unfurl-friendly GET that Slack
+// alerts and findings-list rows link to. Firing a fix only ever happens via
+// the POST /fix form below, never from loading this page.
+app.get("/findings/view", (req, res) => {
+    const { target, vuln } = req.query;
+    const finding = [...state.getActiveFindings(), ...state.getResolvedFindings(500)].find(
+        (f) => f.target === target && f.vuln_id === vuln
+    );
+    if (!finding) {
+        res.status(404).render("finding", { activePage: "findings", finding: null, fixRequest: null, fixEnabled: false });
+        return;
+    }
+
+    res.render("finding", {
+        activePage: "findings",
+        finding,
+        fixRequest: state.getFixRequestForFinding(target, vuln),
+        fixEnabled: fixEnabledFor(target),
+    });
+});
+
+// The dashboard's second deliberate write (alongside POST /scan/:type):
+// queues a "fix this finding with Claude" request for sentinel's poll loop
+// to fire (see requestFix in src/state.js). Never calls the routine API
+// directly - see src/fixTrigger.js and src/index.js.
+app.post("/fix", (req, res) => {
+    const { target, vuln } = req.body;
+    const finding = state.getActiveFindings().find((f) => f.target === target && f.vuln_id === vuln);
+    if (finding && fixEnabledFor(target)) {
+        state.requestFix(target, vuln, {
+            severity: finding.severity,
+            title: finding.title,
+            detail: finding.detail,
+        });
+    }
+    res.redirect(`/findings/view?target=${encodeURIComponent(target)}&vuln=${encodeURIComponent(vuln)}`);
 });
 
 app.get("/events", (req, res) => {

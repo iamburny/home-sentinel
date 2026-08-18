@@ -19,7 +19,11 @@ async function sendDigest(heading, findings) {
 
     const lines = findings.map((f) => {
         const emoji = SEVERITY_EMOJI[f.severity?.toUpperCase()] || "•";
-        return `${emoji} *${f.title}*\n${f.detail}`;
+        const link =
+            config.dashboardBaseUrl && f.target && f.vulnId
+                ? `\n<${config.dashboardBaseUrl}/findings/view?target=${encodeURIComponent(f.target)}&vuln=${encodeURIComponent(f.vulnId)}|View & fix →>`
+                : "";
+        return `${emoji} *${f.title}*\n${f.detail}${link}`;
     });
     const text = `*${heading}* (${findings.length} finding${findings.length === 1 ? "" : "s"})\n\n${lines.join("\n\n")}`;
 

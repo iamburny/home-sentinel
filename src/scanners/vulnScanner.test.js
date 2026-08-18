@@ -50,24 +50,28 @@ test("extractFindings: returns an empty list for a clean report", () => {
 });
 
 test("toAlert: prefixes the finding id with the scope label and passes detail through", () => {
-    const alert = toAlert("www.collecterly.com", {
+    const alert = toAlert("www.collecterly.com", "www.collecterly.com", {
         id: "GHSA-9qr9-h5gf-34mp",
         severity: "CRITICAL",
         title: "Next.js RCE",
         detail: "Next.js RCE\nnext 15.5.4 → fix: 15.5.7",
     });
+    assert.equal(alert.target, "www.collecterly.com");
+    assert.equal(alert.vulnId, "GHSA-9qr9-h5gf-34mp");
     assert.equal(alert.severity, "CRITICAL");
     assert.equal(alert.title, "[www.collecterly.com] GHSA-9qr9-h5gf-34mp");
     assert.match(alert.detail, /next 15\.5\.4/);
     assert.match(alert.detail, /15\.5\.7/);
 });
 
-test("toAlert: formats a secret finding the same way", () => {
-    const alert = toAlert("api.collecterly.com", {
+test("toAlert: keeps the real stored target separate from the display label", () => {
+    const alert = toAlert("image:sha256:abc123", "collecterlyapp", {
         id: "secret:docker-compose.yml:generic-password:50",
         severity: "HIGH",
         title: "Leaked secret: Hardcoded password",
         detail: "Leaked secret: Hardcoded password (docker-compose.yml:50)",
     });
+    assert.equal(alert.target, "image:sha256:abc123");
+    assert.equal(alert.title, "[collecterlyapp] secret:docker-compose.yml:generic-password:50");
     assert.match(alert.detail, /docker-compose\.yml:50/);
 });

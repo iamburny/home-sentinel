@@ -34,6 +34,7 @@
                     <th>Target</th>
                     <th>Finding</th>
                     <th><%= showResolved ? 'Resolved' : 'First seen' %></th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -46,6 +47,11 @@
                             <% if (f.detail) { %><div class="detail"><%= f.detail %></div><% } %>
                         </td>
                         <td class="muted"><%= timeAgo(showResolved ? f.resolved_at : f.first_seen) %></td>
+                        <td>
+                            <a href="/findings/view?target=<%= encodeURIComponent(f.target) %>&vuln=<%= encodeURIComponent(f.vuln_id) %>">
+                                <%= fixEnabledFor(f.target) ? 'View / fix →' : 'View →' %>
+                            </a>
+                        </td>
                     </tr>
                 <% } %>
             </tbody>

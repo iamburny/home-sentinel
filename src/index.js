@@ -4,6 +4,7 @@ const alert = require("./alert");
 const state = require("./state");
 const vulnScanner = require("./scanners/vulnScanner");
 const anomalyScanner = require("./scanners/anomalyScanner");
+const fixTrigger = require("./fixTrigger");
 
 // How often to check for a manual "run scan now" request from the dashboard
 // (src/dashboard/server.js writes it into the shared SQLite state - sentinel
@@ -69,6 +70,41 @@ function pollForManualScanRequests() {
     }
 }
 
+/**
+ * Fires any "Fix with Claude" requests the dashboard has queued. Each
+ * project's routine id/token live in config.fsScanProjects - a request for a
+ * project that hasn't been wired up yet (or isn't a project at all, e.g. an
+ * image/stale-image target) is left pending rather than erroring, since it
+ * may just not have a "Fix with Claude" button surfaced for it yet.
+ */
+async function pollForFixRequests() {
+    for (const req of state.getPendingFixRequests()) {
+        const project = config.fsScanProjects.find((p) => p.name === req.target);
+        if (!project?.fixRoutineId || !project?.fixRoutineToken) continue;
+
+        const text = [
+            "Security finding from home-sentinel.",
+            `Repo: ${project.githubRepo}`,
+            `Severity: ${req.severity}`,
+            `Title: ${req.title}`,
+            `Detail: ${req.detail}`,
+        ].join("\n");
+
+        try {
+            const { sessionId, sessionUrl } = await fixTrigger.fireRoutine(
+                project.fixRoutineId,
+                project.fixRoutineToken,
+                text
+            );
+            console.log(`[sentinel] fired fix routine for ${req.target}/${req.vuln_id}: ${sessionUrl}`);
+            state.markFixStarted(req.id, { sessionId, sessionUrl });
+        } catch (err) {
+            console.error(`[sentinel] failed to fire fix routine for ${req.target}/${req.vuln_id}:`, err.message);
+            state.markFixError(req.id, err.message);
+        }
+    }
+}
+
 async function main() {
     console.log("[sentinel] starting up");
     console.log(`[sentinel] vuln scan schedule: ${config.vulnScanCron}`);
@@ -81,6 +117,7 @@ async function main() {
     cron.schedule(config.vulnScanCron, runVulnScan);
     cron.schedule(config.anomalyScanCron, runAnomalyScan);
     setInterval(pollForManualScanRequests, SCAN_REQUEST_POLL_MS);
+    setInterval(pollForFixRequests, SCAN_REQUEST_POLL_MS);
 
     // Run once immediately on startup so we don't wait for the first cron tick.
     await runAnomalyScan();

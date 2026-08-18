@@ -63,6 +63,24 @@ db.exec(`
         key TEXT PRIMARY KEY,
         value TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS fix_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target TEXT NOT NULL,
+        vuln_id TEXT NOT NULL,
+        severity TEXT,
+        title TEXT,
+        detail TEXT,
+        requested_at TEXT NOT NULL,
+        started_at TEXT,
+        session_id TEXT,
+        session_url TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_fix_requests_finding
+        ON fix_requests (target, vuln_id, requested_at);
 `);
 
 // CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to a
@@ -246,15 +264,73 @@ function consumeScanRequest(scanType) {
     if (requestedAt !== null) setKv(`scan_request_consumed_${scanType}`, requestedAt);
 }
 
+/**
+ * Requests a "fix this finding with Claude" run - sentinel's poll loop
+ * picks it up and fires the matching project's routine (see
+ * src/fixTrigger.js). This is the second deliberate write exception for
+ * dashboard code (alongside requestScan) - see src/dashboard/server.js.
+ * severity/title/detail are snapshotted at request time so an in-flight fix
+ * keeps the wording it was fired with even if a later scan updates the
+ * finding. No-ops (returns the existing row) if one is already pending or
+ * started for this finding - the routine fire API has no idempotency key,
+ * so double-clicks must be de-duped here.
+ */
+function requestFix(target, vulnId, { severity, title, detail } = {}) {
+    const existing = db
+        .prepare(
+            "SELECT * FROM fix_requests WHERE target = ? AND vuln_id = ? AND status IN ('pending', 'started') ORDER BY requested_at DESC LIMIT 1"
+        )
+        .get(target, vulnId);
+    if (existing) return existing;
+
+    const result = db
+        .prepare(
+            `INSERT INTO fix_requests (target, vuln_id, severity, title, detail, requested_at, status)
+             VALUES (?, ?, ?, ?, ?, ?, 'pending')`
+        )
+        .run(target, vulnId, severity ?? null, title ?? null, detail ?? null, new Date().toISOString());
+    return db.prepare("SELECT * FROM fix_requests WHERE id = ?").get(result.lastInsertRowid);
+}
+
+/** All fix requests still waiting to be fired - sentinel poll loop only. */
+function getPendingFixRequests() {
+    return db.prepare("SELECT * FROM fix_requests WHERE status = 'pending' ORDER BY requested_at").all();
+}
+
+/** Marks a fix request as fired - call with the id returned by requestFix()/getPendingFixRequests(). */
+function markFixStarted(id, { sessionId, sessionUrl }) {
+    db.prepare(
+        "UPDATE fix_requests SET status = 'started', started_at = ?, session_id = ?, session_url = ? WHERE id = ?"
+    ).run(new Date().toISOString(), sessionId, sessionUrl, id);
+}
+
+/** Marks a fix request as failed to fire (e.g. routine not configured, API error). */
+function markFixError(id, error) {
+    db.prepare("UPDATE fix_requests SET status = 'error', started_at = ?, error = ? WHERE id = ?").run(
+        new Date().toISOString(),
+        error,
+        id
+    );
+}
+
 // --- Read-only queries - safe for the dashboard to call. Never call the
-// write functions above from dashboard code (requestScan is the deliberate
-// exception - see src/dashboard/server.js). ---
+// write functions above from dashboard code (requestScan/requestFix are the
+// deliberate exceptions - see src/dashboard/server.js). ---
 
 /** Whether a scan has been requested since it was last consumed by the poll loop, and when. */
 function getScanRequestStatus(scanType) {
     const requestedAt = getKv(`scan_requested_${scanType}`, null);
     const consumedAt = getKv(`scan_request_consumed_${scanType}`, null);
     return { requestedAt, pending: requestedAt !== null && requestedAt !== consumedAt };
+}
+
+/** The most recent fix request for a finding, if any - for the dashboard to render its status. */
+function getFixRequestForFinding(target, vulnId) {
+    return db
+        .prepare(
+            "SELECT * FROM fix_requests WHERE target = ? AND vuln_id = ? ORDER BY requested_at DESC LIMIT 1"
+        )
+        .get(target, vulnId);
 }
 
 /** All currently-unresolved vulnerability findings, newest first. */
@@ -316,12 +392,17 @@ module.exports = {
     finishScanRun,
     requestScan,
     consumeScanRequest,
+    requestFix,
+    getPendingFixRequests,
+    markFixStarted,
+    markFixError,
     getActiveFindings,
     getResolvedFindings,
     getRecentAnomalyEvents,
     getRecentScanRuns,
     getLatestCpuByContainer,
     getScanRequestStatus,
+    getFixRequestForFinding,
     getKv,
     setKv,
 };

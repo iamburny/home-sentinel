@@ -1,0 +1,55 @@
+<%- include('partials/_header') %>
+
+<h1>Finding</h1>
+
+<% if (!finding) { %>
+    <div class="panel">
+        <div class="empty">Finding not found (it may have scrolled out of the resolved history).</div>
+    </div>
+<% } else { %>
+    <div class="panel">
+        <table>
+            <tr>
+                <td>Severity</td>
+                <td><span class="badge sev-<%= finding.severity %>"><%= finding.severity %></span></td>
+            </tr>
+            <tr>
+                <td>Target</td>
+                <td><%= finding.target %></td>
+            </tr>
+            <tr>
+                <td><%= finding.resolved_at ? 'Resolved' : 'First seen' %></td>
+                <td class="muted"><%= timeAgo(finding.resolved_at || finding.first_seen) %></td>
+            </tr>
+        </table>
+        <h2 style="font-size:14px;">
+            <%= finding.title || finding.vuln_id %>
+        </h2>
+        <% if (finding.detail) { %><div class="detail"><%= finding.detail %></div><% } %>
+    </div>
+
+    <div class="panel">
+        <h2 style="font-size:14px;margin-top:0;">Fix with Claude</h2>
+        <% if (!fixEnabled) { %>
+            <div class="muted">No fix routine is configured for this project yet.</div>
+        <% } else if (!fixRequest || fixRequest.status === 'error') { %>
+            <% if (fixRequest && fixRequest.status === 'error') { %>
+                <div class="muted" style="margin-bottom:10px;">Last attempt failed to start: <%= fixRequest.error %></div>
+            <% } %>
+            <form method="POST" action="/fix">
+                <input type="hidden" name="target" value="<%= finding.target %>">
+                <input type="hidden" name="vuln" value="<%= finding.vuln_id %>">
+                <button type="submit" class="btn">Fix with Claude</button>
+            </form>
+        <% } else if (fixRequest.status === 'pending') { %>
+            <div class="muted">Fix requested <%= timeAgo(fixRequest.requested_at) %> - will start within ~10s.</div>
+        <% } else if (fixRequest.status === 'started') { %>
+            <div class="muted">
+                Fix session started <%= timeAgo(fixRequest.started_at) %> -
+                <a href="<%= fixRequest.session_url %>" target="_blank" rel="noopener">open session ↗</a>
+            </div>
+        <% } %>
+    </div>
+<% } %>
+
+<%- include('partials/_footer') %>
