@@ -31,6 +31,13 @@
                     <span class="muted">no scan recorded yet</span>
                 <% } %>
             </td>
+            <td style="text-align:right;">
+                <form method="POST" action="/scan/vuln">
+                    <button type="submit" class="btn" <%= vulnScanPending ? 'disabled' : '' %>>
+                        <%= vulnScanPending ? 'Queued…' : 'Run now' %>
+                    </button>
+                </form>
+            </td>
         </tr>
         <tr>
             <td>Last anomaly scan</td>
@@ -44,8 +51,18 @@
                     <span class="muted">no scan recorded yet</span>
                 <% } %>
             </td>
+            <td style="text-align:right;">
+                <form method="POST" action="/scan/anomaly">
+                    <button type="submit" class="btn" <%= anomalyScanPending ? 'disabled' : '' %>>
+                        <%= anomalyScanPending ? 'Queued…' : 'Run now' %>
+                    </button>
+                </form>
+            </td>
         </tr>
     </table>
+    <% if (vulnScanPending || anomalyScanPending) { %>
+        <div class="muted" style="margin-top:8px;font-size:12.5px;">Manual scans are queued and will start within ~10s.</div>
+    <% } %>
 </div>
 
 <div class="panel">

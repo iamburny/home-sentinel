@@ -91,6 +91,17 @@
         }
         .filters a.toggle.active { border-color: var(--link); color: var(--link); }
         a { color: var(--link); }
+        .btn {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .btn:hover:not(:disabled) { border-color: var(--link); color: var(--link); }
+        .btn:disabled { color: var(--muted); cursor: default; }
     </style>
 </head>
 <body>

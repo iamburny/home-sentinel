@@ -229,8 +229,33 @@ function finishScanRun(id, { findingsCount = null, error = null } = {}) {
     ).run(new Date().toISOString(), findingsCount, error, id);
 }
 
+/**
+ * Requests an out-of-band scan run - sentinel's poll loop (src/index.js)
+ * picks this up within SCAN_REQUEST_POLL_MS. This is the one write function
+ * the dashboard is allowed to call (from a manual "run scan now" button) -
+ * it only ever asks for work, it never touches findings/anomaly data. See
+ * src/dashboard/server.js.
+ */
+function requestScan(scanType) {
+    setKv(`scan_requested_${scanType}`, new Date().toISOString());
+}
+
+/** Marks the current pending request (if any) as consumed - call once the requested scan has been kicked off. */
+function consumeScanRequest(scanType) {
+    const requestedAt = getKv(`scan_requested_${scanType}`, null);
+    if (requestedAt !== null) setKv(`scan_request_consumed_${scanType}`, requestedAt);
+}
+
 // --- Read-only queries - safe for the dashboard to call. Never call the
-// write functions above from dashboard code; see src/dashboard/server.js. ---
+// write functions above from dashboard code (requestScan is the deliberate
+// exception - see src/dashboard/server.js). ---
+
+/** Whether a scan has been requested since it was last consumed by the poll loop, and when. */
+function getScanRequestStatus(scanType) {
+    const requestedAt = getKv(`scan_requested_${scanType}`, null);
+    const consumedAt = getKv(`scan_request_consumed_${scanType}`, null);
+    return { requestedAt, pending: requestedAt !== null && requestedAt !== consumedAt };
+}
 
 /** All currently-unresolved vulnerability findings, newest first. */
 function getActiveFindings() {
@@ -289,11 +314,14 @@ module.exports = {
     recordAnomalyEvent,
     startScanRun,
     finishScanRun,
+    requestScan,
+    consumeScanRequest,
     getActiveFindings,
     getResolvedFindings,
     getRecentAnomalyEvents,
     getRecentScanRuns,
     getLatestCpuByContainer,
+    getScanRequestStatus,
     getKv,
     setKv,
 };

@@ -9,6 +9,7 @@ const DASHBOARD_USER = process.env.DASHBOARD_USER || "admin";
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
 
 const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+const SCAN_TYPES = ["vuln", "anomaly"];
 
 const app = express();
 app.set("view engine", "ejs");
@@ -42,7 +43,20 @@ app.get("/", (req, res) => {
         lastVulnRun: latestRunByType(recentRuns, "vuln"),
         lastAnomalyRun: latestRunByType(recentRuns, "anomaly"),
         latestCpu,
+        vulnScanPending: state.getScanRequestStatus("vuln").pending,
+        anomalyScanPending: state.getScanRequestStatus("anomaly").pending,
     });
+});
+
+// The one state-changing route the dashboard exposes: queues a manual scan
+// request for sentinel's poll loop to pick up (see requestScan in
+// src/state.js). Never touches findings/anomaly data directly.
+app.post("/scan/:type", (req, res) => {
+    const { type } = req.params;
+    if (SCAN_TYPES.includes(type)) {
+        state.requestScan(type);
+    }
+    res.redirect("/");
 });
 
 app.get("/findings", (req, res) => {
