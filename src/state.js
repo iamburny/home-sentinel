@@ -83,21 +83,21 @@ db.exec(`
 
     CREATE INDEX IF NOT EXISTS idx_fix_requests_finding
         ON fix_requests (target, vuln_id, requested_at);
-
-    CREATE INDEX IF NOT EXISTS idx_fix_requests_batch
-        ON fix_requests (batch_id);
 `);
 
 // CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to a
 // table that already existed (production had fix_requests before batch_id
 // existed) - migrate that in explicitly, same as the vuln_findings columns
-// just below.
+// just below. Must run - and the batch_id index must be created - before
+// anything else touches batch_id, or a production DB predating this column
+// hits "no such column: batch_id".
 const existingFixRequestColumns = new Set(
     db.prepare("PRAGMA table_info(fix_requests)").all().map((c) => c.name)
 );
 if (!existingFixRequestColumns.has("batch_id")) {
     db.exec("ALTER TABLE fix_requests ADD COLUMN batch_id TEXT");
 }
+db.exec("CREATE INDEX IF NOT EXISTS idx_fix_requests_batch ON fix_requests (batch_id)");
 
 // CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to a
 // table that already existed (production had vuln_findings before title/
