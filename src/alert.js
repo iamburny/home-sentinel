@@ -9,6 +9,26 @@ const SEVERITY_EMOJI = {
     INFO: "ℹ️",
 };
 
+async function postToSlack(text) {
+    if (!config.slackWebhookUrl) {
+        console.warn("[alert] SLACK_WEBHOOK_URL not set - alert logged locally only");
+        return;
+    }
+
+    try {
+        const res = await fetch(config.slackWebhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+        });
+        if (!res.ok) {
+            console.error(`[alert] Slack webhook returned ${res.status}: ${await res.text()}`);
+        }
+    } catch (err) {
+        console.error("[alert] failed to post to Slack:", err.message);
+    }
+}
+
 /**
  * Sends a batched digest of findings to Slack. `findings` is an array of
  * { severity, title, detail } objects. No-ops (just logs) if no webhook is
@@ -30,23 +50,14 @@ async function sendDigest(heading, findings) {
     console.log(`[alert] ${heading}: ${findings.length} finding(s)`);
     for (const f of findings) console.log(`  - [${f.severity}] ${f.title}`);
 
-    if (!config.slackWebhookUrl) {
-        console.warn("[alert] SLACK_WEBHOOK_URL not set - alert logged locally only");
-        return;
-    }
-
-    try {
-        const res = await fetch(config.slackWebhookUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text }),
-        });
-        if (!res.ok) {
-            console.error(`[alert] Slack webhook returned ${res.status}: ${await res.text()}`);
-        }
-    } catch (err) {
-        console.error("[alert] failed to post to Slack:", err.message);
-    }
+    await postToSlack(text);
 }
 
-module.exports = { sendDigest };
+/** Posts a one-line notice to Slack the moment a "Fix with Claude" session actually starts. */
+async function sendFixStarted({ target, title, sessionUrl }) {
+    const text = `🛠️ *Fix with Claude started* - ${target}: ${title}\n<${sessionUrl}|Watch session →>`;
+    console.log(`[alert] fix started for ${target}: ${sessionUrl}`);
+    await postToSlack(text);
+}
+
+module.exports = { sendDigest, sendFixStarted };

@@ -333,6 +333,13 @@ function getFixRequestForFinding(target, vulnId) {
         .get(target, vulnId);
 }
 
+/** Fix requests still pending or with a session running - for the overview page's "Active fix sessions" panel. */
+function getActiveFixRequests() {
+    return db
+        .prepare("SELECT * FROM fix_requests WHERE status IN ('pending', 'started') ORDER BY requested_at DESC")
+        .all();
+}
+
 /** All currently-unresolved vulnerability findings, newest first. */
 function getActiveFindings() {
     return db
@@ -403,6 +410,7 @@ module.exports = {
     getLatestCpuByContainer,
     getScanRequestStatus,
     getFixRequestForFinding,
+    getActiveFixRequests,
     getKv,
     setKv,
 };

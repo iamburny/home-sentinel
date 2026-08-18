@@ -98,6 +98,7 @@ async function pollForFixRequests() {
             );
             console.log(`[sentinel] fired fix routine for ${req.target}/${req.vuln_id}: ${sessionUrl}`);
             state.markFixStarted(req.id, { sessionId, sessionUrl });
+            await alert.sendFixStarted({ target: req.target, title: req.title || req.vuln_id, sessionUrl });
         } catch (err) {
             console.error(`[sentinel] failed to fire fix routine for ${req.target}/${req.vuln_id}:`, err.message);
             state.markFixError(req.id, err.message);

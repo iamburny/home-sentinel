@@ -53,6 +53,7 @@ app.get("/", (req, res) => {
         latestCpu,
         vulnScanPending: state.getScanRequestStatus("vuln").pending,
         anomalyScanPending: state.getScanRequestStatus("anomaly").pending,
+        activeFixes: state.getActiveFixRequests(),
     });
 });
 

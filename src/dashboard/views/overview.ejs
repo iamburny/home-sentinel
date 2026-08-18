@@ -65,6 +65,37 @@
     <% } %>
 </div>
 
+<% if (activeFixes.length > 0) { %>
+    <div class="panel">
+        <h2 style="font-size:14px;margin-top:0;">Active fix sessions</h2>
+        <table>
+            <thead><tr><th>Target</th><th>Finding</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                <% for (const fix of activeFixes) { %>
+                    <tr>
+                        <td><%= fix.target %></td>
+                        <td><%= fix.title || fix.vuln_id %></td>
+                        <td class="muted">
+                            <% if (fix.status === 'pending') { %>
+                                queued <%= timeAgo(fix.requested_at) %>
+                            <% } else { %>
+                                running since <%= timeAgo(fix.started_at) %>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% if (fix.session_url) { %>
+                                <a href="<%= fix.session_url %>" target="_blank" rel="noopener">open session ↗</a>
+                            <% } else { %>
+                                <a href="/findings/view?target=<%= encodeURIComponent(fix.target) %>&vuln=<%= encodeURIComponent(fix.vuln_id) %>">view →</a>
+                            <% } %>
+                        </td>
+                    </tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+<% } %>
+
 <div class="panel">
     <h2 style="font-size:14px;margin-top:0;">Container CPU (latest sample)</h2>
     <% if (latestCpu.length === 0) { %>
