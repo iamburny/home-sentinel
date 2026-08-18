@@ -71,23 +71,43 @@ function pollForManualScanRequests() {
 }
 
 /**
- * Fires any "Fix with Claude" requests the dashboard has queued. Each
- * project's routine id/token live in config.fsScanProjects - a request for a
- * project that hasn't been wired up yet (or isn't a project at all, e.g. an
+ * Fires any "Fix with Claude" requests the dashboard has queued. Requests
+ * queued together (a batch_id from requestFixBatch/POST /fix/batch) fire as
+ * a single routine call listing every finding in the batch, rather than one
+ * call per finding - the dashboard only ever batches findings for the same
+ * target, so every group here is safely single-project. Each project's
+ * routine id/token live in config.fsScanProjects - a request for a project
+ * that hasn't been wired up yet (or isn't a project at all, e.g. an
  * image/stale-image target) is left pending rather than erroring, since it
  * may just not have a "Fix with Claude" button surfaced for it yet.
  */
 async function pollForFixRequests() {
+    const groups = new Map();
     for (const req of state.getPendingFixRequests()) {
-        const project = config.fsScanProjects.find((p) => p.name === req.target);
+        const key = req.batch_id || `solo:${req.id}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(req);
+    }
+
+    for (const reqs of groups.values()) {
+        const target = reqs[0].target;
+        const project = config.fsScanProjects.find((p) => p.name === target);
         if (!project?.fixRoutineId || !project?.fixRoutineToken) continue;
 
+        const multi = reqs.length > 1;
         const text = [
-            "Security finding from home-sentinel.",
+            `Security finding${multi ? "s" : ""} from home-sentinel.`,
             `Repo: ${project.githubRepo}`,
-            `Severity: ${req.severity}`,
-            `Title: ${req.title}`,
-            `Detail: ${req.detail}`,
+            "",
+            ...reqs.flatMap((req, i) =>
+                [
+                    multi ? `--- Finding ${i + 1} of ${reqs.length} ---` : null,
+                    `Severity: ${req.severity}`,
+                    `Title: ${req.title}`,
+                    `Detail: ${req.detail}`,
+                    "",
+                ].filter((line) => line !== null)
+            ),
         ].join("\n");
 
         try {
@@ -96,12 +116,16 @@ async function pollForFixRequests() {
                 project.fixRoutineToken,
                 text
             );
-            console.log(`[sentinel] fired fix routine for ${req.target}/${req.vuln_id}: ${sessionUrl}`);
-            state.markFixStarted(req.id, { sessionId, sessionUrl });
-            await alert.sendFixStarted({ target: req.target, title: req.title || req.vuln_id, sessionUrl });
+            console.log(`[sentinel] fired fix routine for ${target} (${reqs.length} finding(s)): ${sessionUrl}`);
+            for (const req of reqs) state.markFixStarted(req.id, { sessionId, sessionUrl });
+            await alert.sendFixStarted({
+                target,
+                title: multi ? `${reqs.length} findings` : reqs[0].title || reqs[0].vuln_id,
+                sessionUrl,
+            });
         } catch (err) {
-            console.error(`[sentinel] failed to fire fix routine for ${req.target}/${req.vuln_id}:`, err.message);
-            state.markFixError(req.id, err.message);
+            console.error(`[sentinel] failed to fire fix routine for ${target} (${reqs.length} finding(s)):`, err.message);
+            for (const req of reqs) state.markFixError(req.id, err.message);
         }
     }
 }

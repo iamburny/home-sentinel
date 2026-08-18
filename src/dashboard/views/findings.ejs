@@ -23,13 +23,23 @@
     </form>
 </div>
 
+<%
+    // Bulk-select only makes sense once findings are narrowed to one
+    // fix-enabled project - a routine only covers one repo, so mixing
+    // targets in a single batch would be ambiguous. Filter by target first
+    // (dropdown above) to see the checkboxes.
+    const bulkFixEnabled = !showResolved && targetFilter && fixEnabledFor(targetFilter);
+%>
+
 <div class="panel">
     <% if (findings.length === 0) { %>
         <div class="empty">No <%= showResolved ? 'resolved' : 'active' %> findings<%= severityFilter || targetFilter ? ' matching this filter' : '' %>.</div>
     <% } else { %>
+        <% if (bulkFixEnabled) { %><form method="POST" action="/fix/batch"><input type="hidden" name="target" value="<%= targetFilter %>"><% } %>
         <table>
             <thead>
                 <tr>
+                    <% if (bulkFixEnabled) { %><th><input type="checkbox" onclick="this.closest('table').querySelectorAll('tbody input[type=checkbox]').forEach(c => c.checked = this.checked)"></th><% } %>
                     <th>Severity</th>
                     <th>Target</th>
                     <th>Finding</th>
@@ -40,6 +50,7 @@
             <tbody>
                 <% for (const f of findings) { %>
                     <tr>
+                        <% if (bulkFixEnabled) { %><td><input type="checkbox" name="vuln" value="<%= f.vuln_id %>"></td><% } %>
                         <td><span class="badge sev-<%= f.severity %>"><%= f.severity %></span></td>
                         <td><%= f.target %></td>
                         <td>
@@ -56,6 +67,12 @@
                 <% } %>
             </tbody>
         </table>
+        <% if (bulkFixEnabled) { %>
+            <div style="margin-top:12px;">
+                <button type="submit" class="btn">Fix selected with Claude</button>
+            </div>
+            </form>
+        <% } %>
     <% } %>
 </div>
 

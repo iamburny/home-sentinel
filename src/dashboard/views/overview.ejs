@@ -74,7 +74,7 @@
                 <% for (const fix of activeFixes) { %>
                     <tr>
                         <td><%= fix.target %></td>
-                        <td><%= fix.title || fix.vuln_id %></td>
+                        <td><%= fix.title %></td>
                         <td class="muted">
                             <% if (fix.status === 'pending') { %>
                                 queued <%= timeAgo(fix.requested_at) %>
@@ -85,8 +85,10 @@
                         <td>
                             <% if (fix.session_url) { %>
                                 <a href="<%= fix.session_url %>" target="_blank" rel="noopener">open session ↗</a>
+                            <% } else if (fix.vulnId) { %>
+                                <a href="/findings/view?target=<%= encodeURIComponent(fix.target) %>&vuln=<%= encodeURIComponent(fix.vulnId) %>">view →</a>
                             <% } else { %>
-                                <a href="/findings/view?target=<%= encodeURIComponent(fix.target) %>&vuln=<%= encodeURIComponent(fix.vuln_id) %>">view →</a>
+                                <a href="/findings?target=<%= encodeURIComponent(fix.target) %>">view →</a>
                             <% } %>
                         </td>
                     </tr>

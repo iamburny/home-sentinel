@@ -1,4 +1,5 @@
 const { DatabaseSync } = require("node:sqlite");
+const { randomUUID } = require("crypto");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -76,12 +77,27 @@ db.exec(`
         session_id TEXT,
         session_url TEXT,
         status TEXT NOT NULL DEFAULT 'pending',
-        error TEXT
+        error TEXT,
+        batch_id TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_fix_requests_finding
         ON fix_requests (target, vuln_id, requested_at);
+
+    CREATE INDEX IF NOT EXISTS idx_fix_requests_batch
+        ON fix_requests (batch_id);
 `);
+
+// CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to a
+// table that already existed (production had fix_requests before batch_id
+// existed) - migrate that in explicitly, same as the vuln_findings columns
+// just below.
+const existingFixRequestColumns = new Set(
+    db.prepare("PRAGMA table_info(fix_requests)").all().map((c) => c.name)
+);
+if (!existingFixRequestColumns.has("batch_id")) {
+    db.exec("ALTER TABLE fix_requests ADD COLUMN batch_id TEXT");
+}
 
 // CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to a
 // table that already existed (production had vuln_findings before title/
@@ -265,31 +281,43 @@ function consumeScanRequest(scanType) {
 }
 
 /**
- * Requests a "fix this finding with Claude" run - sentinel's poll loop
- * picks it up and fires the matching project's routine (see
- * src/fixTrigger.js). This is the second deliberate write exception for
- * dashboard code (alongside requestScan) - see src/dashboard/server.js.
- * severity/title/detail are snapshotted at request time so an in-flight fix
- * keeps the wording it was fired with even if a later scan updates the
- * finding. No-ops (returns the existing row) if one is already pending or
- * started for this finding - the routine fire API has no idempotency key,
- * so double-clicks must be de-duped here.
+ * Requests "fix these findings with Claude" as a single batch, sharing one
+ * batch_id - sentinel's poll loop (src/index.js) fires them all in one
+ * routine call rather than one per finding. This is the second deliberate
+ * write exception for dashboard code (alongside requestScan) - see
+ * src/dashboard/server.js. severity/title/detail are snapshotted at request
+ * time so an in-flight fix keeps the wording it was fired with even if a
+ * later scan updates the finding. Findings that already have a pending or
+ * started request are skipped rather than duplicated - the routine fire API
+ * has no idempotency key, so double-submits must be de-duped here.
  */
-function requestFix(target, vulnId, { severity, title, detail } = {}) {
-    const existing = db
-        .prepare(
-            "SELECT * FROM fix_requests WHERE target = ? AND vuln_id = ? AND status IN ('pending', 'started') ORDER BY requested_at DESC LIMIT 1"
-        )
-        .get(target, vulnId);
-    if (existing) return existing;
+function requestFixBatch(target, findings) {
+    const batchId = randomUUID();
+    const now = new Date().toISOString();
+    const getExisting = db.prepare(
+        "SELECT * FROM fix_requests WHERE target = ? AND vuln_id = ? AND status IN ('pending', 'started') ORDER BY requested_at DESC LIMIT 1"
+    );
+    const insert = db.prepare(
+        `INSERT INTO fix_requests (target, vuln_id, severity, title, detail, requested_at, status, batch_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`
+    );
 
-    const result = db
-        .prepare(
-            `INSERT INTO fix_requests (target, vuln_id, severity, title, detail, requested_at, status)
-             VALUES (?, ?, ?, ?, ?, ?, 'pending')`
-        )
-        .run(target, vulnId, severity ?? null, title ?? null, detail ?? null, new Date().toISOString());
-    return db.prepare("SELECT * FROM fix_requests WHERE id = ?").get(result.lastInsertRowid);
+    const rows = [];
+    for (const f of findings) {
+        const existing = getExisting.get(target, f.vulnId);
+        if (existing) {
+            rows.push(existing);
+            continue;
+        }
+        const result = insert.run(target, f.vulnId, f.severity ?? null, f.title ?? null, f.detail ?? null, now, batchId);
+        rows.push(db.prepare("SELECT * FROM fix_requests WHERE id = ?").get(result.lastInsertRowid));
+    }
+    return rows;
+}
+
+/** Requests a fix for a single finding - a batch of one. See requestFixBatch(). */
+function requestFix(target, vulnId, { severity, title, detail } = {}) {
+    return requestFixBatch(target, [{ vulnId, severity, title, detail }])[0];
 }
 
 /** All fix requests still waiting to be fired - sentinel poll loop only. */
@@ -400,6 +428,7 @@ module.exports = {
     requestScan,
     consumeScanRequest,
     requestFix,
+    requestFixBatch,
     getPendingFixRequests,
     markFixStarted,
     markFixError,

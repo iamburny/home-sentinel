@@ -39,6 +39,25 @@ function latestRunByType(runs, scanType) {
     return runs.find((r) => r.scan_type === scanType) || null;
 }
 
+/** Collapses a batch of fix_requests rows sharing a batch_id into one summary row for the overview panel. */
+function groupFixes(rows) {
+    const byBatch = new Map();
+    for (const r of rows) {
+        const key = r.batch_id || `solo:${r.id}`;
+        if (!byBatch.has(key)) byBatch.set(key, []);
+        byBatch.get(key).push(r);
+    }
+    return [...byBatch.values()].map((group) => ({
+        target: group[0].target,
+        vulnId: group.length === 1 ? group[0].vuln_id : null,
+        title: group.length === 1 ? group[0].title || group[0].vuln_id : `${group.length} findings`,
+        status: group[0].status,
+        requested_at: group[0].requested_at,
+        started_at: group[0].started_at,
+        session_url: group[0].session_url,
+    }));
+}
+
 app.get("/", (req, res) => {
     const activeFindings = state.getActiveFindings();
     const recentRuns = state.getRecentScanRuns(20);
@@ -53,7 +72,7 @@ app.get("/", (req, res) => {
         latestCpu,
         vulnScanPending: state.getScanRequestStatus("vuln").pending,
         anomalyScanPending: state.getScanRequestStatus("anomaly").pending,
-        activeFixes: state.getActiveFixRequests(),
+        activeFixes: groupFixes(state.getActiveFixRequests()),
     });
 });
 
@@ -127,6 +146,25 @@ app.post("/fix", (req, res) => {
         });
     }
     res.redirect(`/findings/view?target=${encodeURIComponent(target)}&vuln=${encodeURIComponent(vuln)}`);
+});
+
+// Bulk version of POST /fix: queues one batch covering every checked finding
+// for a single target, so sentinel fires them in one routine call instead of
+// one per finding. Same deliberate write exception as POST /fix - see
+// requestFixBatch in src/state.js.
+app.post("/fix/batch", (req, res) => {
+    const { target } = req.body;
+    const vulnIds = [].concat(req.body.vuln || []);
+
+    if (vulnIds.length > 0 && fixEnabledFor(target)) {
+        const activeFindings = state.getActiveFindings();
+        const findings = vulnIds
+            .map((v) => activeFindings.find((f) => f.target === target && f.vuln_id === v))
+            .filter(Boolean)
+            .map((f) => ({ vulnId: f.vuln_id, severity: f.severity, title: f.title, detail: f.detail }));
+        state.requestFixBatch(target, findings);
+    }
+    res.redirect(`/findings?target=${encodeURIComponent(target)}`);
 });
 
 app.get("/events", (req, res) => {
