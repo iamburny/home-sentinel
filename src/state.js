@@ -404,15 +404,27 @@ function getRecentScanRuns(limit = 20) {
         .all(limit);
 }
 
-/** The single most recent CPU sample for every container that has one. */
+// Containers whose latest sample is older than this, relative to the newest
+// sample of all, have gone away and are left off the dashboard.
+const CPU_CURRENT_WINDOW_MS = 15 * 60 * 1000;
+
+/**
+ * The most recent CPU sample for every container still being sampled. The
+ * window is measured from the newest sample rather than from now, so the
+ * dashboard keeps showing the last sweep if sentinel itself stops sampling.
+ */
 function getLatestCpuByContainer() {
+    const newest = db.prepare("SELECT MAX(sampled_at) AS t FROM cpu_samples").get().t;
+    if (!newest) return [];
+    const cutoff = new Date(Date.parse(newest) - CPU_CURRENT_WINDOW_MS).toISOString();
     return db
         .prepare(
             `SELECT container, cpu_percent, sampled_at FROM cpu_samples c1
              WHERE sampled_at = (SELECT MAX(sampled_at) FROM cpu_samples c2 WHERE c2.container = c1.container)
+               AND sampled_at >= ?
              ORDER BY container`
         )
-        .all();
+        .all(cutoff);
 }
 
 module.exports = {
