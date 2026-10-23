@@ -5,6 +5,7 @@ networks:
 
 volumes:
     sentinel-data:
+    trivy-cache:
 
 services:
     docker-socket-proxy:
@@ -44,6 +45,8 @@ services:
             - AUTH_LOG_PATH=/var/log/auth.log
         volumes:
             - sentinel-data:/data
+            # Keeps Trivy's DBs across rebuilds instead of re-downloading them on every first scan.
+            - trivy-cache:/root/.cache/trivy
             - /var/log/auth.log:/var/log/auth.log:ro
             - /home/matt/api.collecterly.com:/projects/api.collecterly.com:ro
             - /home/matt/www.collecterly.com:/projects/www.collecterly.com:ro

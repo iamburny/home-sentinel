@@ -8,9 +8,29 @@ const execFileAsync = promisify(execFile);
 
 const docker = new Docker({ host: config.dockerHostName, port: config.dockerHostPort, protocol: "http" });
 
+// Scans never update Trivy's DBs themselves - prepareTrivyDbs does that once up front.
+const SKIP_DB_UPDATE = ["--skip-db-update", "--skip-java-db-update"];
+
 async function runTrivyJson(args) {
     const { stdout } = await execFileAsync("trivy", args, { maxBuffer: 1024 * 1024 * 64 });
     return JSON.parse(stdout);
+}
+
+/**
+ * Downloads or refreshes Trivy's vulnerability and Java DBs before any scan
+ * starts. Source and image scans run concurrently, and a scan left to update a
+ * DB itself replaces the file while other scans have it memory-mapped, which
+ * kills them with SIGBUS. A failed refresh is logged and the scans carry on
+ * against whatever DB is already cached.
+ */
+async function prepareTrivyDbs() {
+    for (const flag of ["--download-db-only", "--download-java-db-only"]) {
+        try {
+            await execFileAsync("trivy", ["image", flag, "--quiet"]);
+        } catch (err) {
+            console.error(`[vulnScanner] trivy ${flag} failed, scanning with the cached DB:`, err.message);
+        }
+    }
 }
 
 /** Flattens a Trivy JSON report into a simple, uniform findings list. */
@@ -64,6 +84,7 @@ async function scanProjectSources() {
         try {
             const report = await runTrivyJson([
                 "fs",
+                ...SKIP_DB_UPDATE,
                 "--scanners", "vuln,secret",
                 "--severity", "CRITICAL,HIGH,MEDIUM",
                 "--ignore-unfixed",
@@ -128,6 +149,7 @@ async function scanRunningImages() {
         try {
             const report = await runTrivyJson([
                 "image",
+                ...SKIP_DB_UPDATE,
                 "--severity", "CRITICAL,HIGH",
                 "--ignore-unfixed",
                 "--format", "json",
@@ -146,6 +168,7 @@ async function scanRunningImages() {
 }
 
 async function run() {
+    await prepareTrivyDbs();
     const [sources, images] = await Promise.all([scanProjectSources(), scanRunningImages()]);
     // Resolves findings for any target that vanished entirely this cycle
     // (a container retagged or renamed, not just an individual finding
