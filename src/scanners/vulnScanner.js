@@ -11,9 +11,11 @@ const docker = new Docker({ host: config.dockerHostName, port: config.dockerHost
 // Scans never update Trivy's DBs themselves - prepareTrivyDbs does that once up front.
 const SKIP_DB_UPDATE = ["--skip-db-update", "--skip-java-db-update"];
 const DB_DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+// Caps each target's scan so one hung Trivy run can't keep the scan in progress forever.
+const SCAN_TIMEOUT_MS = 30 * 60 * 1000;
 
 async function runTrivyJson(args) {
-    const { stdout } = await execFileAsync("trivy", args, { maxBuffer: 1024 * 1024 * 64 });
+    const { stdout } = await execFileAsync("trivy", args, { maxBuffer: 1024 * 1024 * 64, timeout: SCAN_TIMEOUT_MS });
     return JSON.parse(stdout);
 }
 

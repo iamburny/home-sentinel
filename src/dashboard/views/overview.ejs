@@ -25,7 +25,10 @@
                 <% if (lastVulnRun) { %>
                     <%= timeAgo(lastVulnRun.started_at) %>
                     <span class="muted">
-                        (<%= lastVulnRun.error ? 'failed: ' + lastVulnRun.error : (lastVulnRun.findings_count ?? '?') + ' new finding(s)' %>)
+                        <%# A run that finished with problems still has a count; one that threw has none. %>
+                        (<%= lastVulnRun.error
+                            ? (lastVulnRun.findings_count != null ? lastVulnRun.findings_count + ' new finding(s), incomplete: ' : 'failed: ') + lastVulnRun.error
+                            : (lastVulnRun.findings_count ?? '?') + ' new finding(s)' %>)
                     </span>
                 <% } else { %>
                     <span class="muted">no scan recorded yet</span>
