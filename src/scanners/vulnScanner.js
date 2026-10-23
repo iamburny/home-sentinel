@@ -10,6 +10,7 @@ const docker = new Docker({ host: config.dockerHostName, port: config.dockerHost
 
 // Scans never update Trivy's DBs themselves - prepareTrivyDbs does that once up front.
 const SKIP_DB_UPDATE = ["--skip-db-update", "--skip-java-db-update"];
+const DB_DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
 
 async function runTrivyJson(args) {
     const { stdout } = await execFileAsync("trivy", args, { maxBuffer: 1024 * 1024 * 64 });
@@ -20,17 +21,21 @@ async function runTrivyJson(args) {
  * Downloads or refreshes Trivy's vulnerability and Java DBs before any scan
  * starts. Source and image scans run concurrently, and a scan left to update a
  * DB itself replaces the file while other scans have it memory-mapped, which
- * kills them with SIGBUS. A failed refresh is logged and the scans carry on
- * against whatever DB is already cached.
+ * kills them with SIGBUS. A failed refresh doesn't stop the run - scans carry
+ * on against whatever DB is already cached - but is returned as a problem so
+ * the run isn't recorded as clean.
  */
 async function prepareTrivyDbs() {
+    const problems = [];
     for (const flag of ["--download-db-only", "--download-java-db-only"]) {
         try {
-            await execFileAsync("trivy", ["image", flag, "--quiet"]);
+            await execFileAsync("trivy", ["image", flag, "--quiet"], { timeout: DB_DOWNLOAD_TIMEOUT_MS });
         } catch (err) {
             console.error(`[vulnScanner] trivy ${flag} failed, scanning with the cached DB:`, err.message);
+            problems.push(`trivy ${flag} failed`);
         }
     }
+    return problems;
 }
 
 /** Flattens a Trivy JSON report into a simple, uniform findings list. */
@@ -79,6 +84,7 @@ function toAlert(target, scopeLabel, finding) {
 async function scanProjectSources() {
     const alerts = [];
     const targets = [];
+    const failed = [];
     for (const project of config.fsScanProjects) {
         targets.push(project.name);
         try {
@@ -98,15 +104,17 @@ async function scanProjectSources() {
             alerts.push(...newFindings.map((f) => toAlert(project.name, project.name, f)));
         } catch (err) {
             console.error(`[vulnScanner] fs scan failed for ${project.name}:`, err.message);
+            failed.push(project.name);
         }
     }
-    return { alerts, targets };
+    return { alerts, targets, failed };
 }
 
 /** Scans every running container's actual image - covers vendor images with no source on disk too. */
 async function scanRunningImages() {
     const alerts = [];
     const targets = [];
+    const failed = [];
     const containers = await docker.listContainers();
     const seenImages = new Set();
 
@@ -162,20 +170,30 @@ async function scanRunningImages() {
             alerts.push(...newFindings.map((f) => toAlert(imageTarget, containerName, f)));
         } catch (err) {
             console.error(`[vulnScanner] image scan failed for ${image}:`, err.message);
+            failed.push(containerName);
         }
     }
-    return { alerts, targets };
+    return { alerts, targets, failed };
 }
 
+/**
+ * Returns the new alerts plus `problems`: DB refreshes that failed and targets
+ * that couldn't be scanned. A target that fails keeps its previous findings
+ * open rather than resolving them, so problems are the only sign it was missed.
+ */
 async function run() {
-    await prepareTrivyDbs();
+    const problems = await prepareTrivyDbs();
     const [sources, images] = await Promise.all([scanProjectSources(), scanRunningImages()]);
+    const failed = [...sources.failed, ...images.failed];
+    if (failed.length > 0) {
+        problems.push(`${failed.length} target(s) not scanned: ${failed.join(", ")}`);
+    }
     // Resolves findings for any target that vanished entirely this cycle
     // (a container retagged or renamed, not just an individual finding
     // within a target going away) - see resolveOrphanedTargets's own doc
     // comment for why pruneStaleFindings alone can't catch this case.
     state.resolveOrphanedTargets([...sources.targets, ...images.targets]);
-    return [...sources.alerts, ...images.alerts];
+    return { alerts: [...sources.alerts, ...images.alerts], problems };
 }
 
 module.exports = { run, extractFindings, toAlert };

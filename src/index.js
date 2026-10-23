@@ -23,10 +23,14 @@ async function runVulnScan() {
     console.log("[sentinel] starting vulnerability scan...");
     const runId = state.startScanRun("vuln");
     try {
-        const findings = await vulnScanner.run();
+        const { alerts: findings, problems } = await vulnScanner.run();
         await alert.sendDigest("Vulnerability scan", findings);
-        console.log(`[sentinel] vulnerability scan complete: ${findings.length} new finding(s)`);
-        state.finishScanRun(runId, { findingsCount: findings.length });
+        const problemText = problems.length > 0 ? problems.join("; ") : null;
+        console.log(
+            `[sentinel] vulnerability scan complete: ${findings.length} new finding(s)` +
+                (problemText ? ` - incomplete: ${problemText}` : "")
+        );
+        state.finishScanRun(runId, { findingsCount: findings.length, error: problemText });
     } catch (err) {
         console.error("[sentinel] vulnerability scan failed:", err);
         state.finishScanRun(runId, { error: err.message });
