@@ -122,8 +122,7 @@ module.exports = {
             8096, 1900, 7359, // jellyfin (http, dlna)
             8123, 8124, // collecterlyapp, collecterly
             8130, 8131, // burny, joplin
-            8200, 8201, 8202, 8203, // fuel-api, fuel-web, fuel-admin, unleash
-            8030, // simple-proxy
+            8200, 8201, // fuel-api, fuel-web
             25566, 5520, // minecraft, hytale
             3099, // home-sentinel's own dashboard
         ],
