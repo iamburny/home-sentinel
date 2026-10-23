@@ -123,7 +123,7 @@ module.exports = {
             8123, 8124, // collecterlyapp, collecterly
             8130, 8131, // burny, joplin
             8200, 8201, // fuel-api, fuel-web
-            25566, 5520, // minecraft, hytale
+            25566, // minecraft
             3099, // home-sentinel's own dashboard
         ],
     },
