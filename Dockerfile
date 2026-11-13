@@ -1,9 +1,9 @@
-FROM node:24-alpine AS dependencies
+FROM node:26-alpine AS dependencies
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 
-FROM node:24-alpine
+FROM node:26-alpine
 WORKDIR /app
 RUN apk add --no-cache curl bash iproute2 ca-certificates && \
     curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
